@@ -1,0 +1,130 @@
+{
+  "meta": {
+    "gameTitle": "Tiny Runner",
+    "timeLimit": 60
+  },
+
+  "audio": {
+    "comment": "ใส่ไฟล์เสียงเองที่ asset/audio/ ตามชื่อไฟล์ด้านล่าง (mp3/wav/ogg ก็ได้ แค่เปลี่ยนนามสกุลในนี้ให้ตรง) ถ้าไม่มีไฟล์ เกมจะเล่นต่อได้ปกติแค่ไม่มีเสียง",
+    "bgm": "asset/audio/bgm.mp3",
+    "bgmVolume": 0.45,
+    "sfxVolume": 0.7,
+    "sfx": {
+      "jump": "asset/audio/jump.mp3",
+      "coin": "asset/audio/coin.mp3",
+      "gem": "asset/audio/gem.mp3",
+      "hit": "asset/audio/hit.mp3",
+      "gameover": "asset/audio/gameover.mp3"
+    }
+  },
+
+  "background": {
+    "image": "asset/sprite/Bg.jpg",
+    "scrollSpeed": 120
+  },
+
+  "ground": {
+    "y": 420,
+    "height": 6
+  },
+
+  "player": {
+    "sprite": "asset/sprite/player_sheet.png",
+    "sheetColumns": 5,
+    "sheetRows": 2,
+    "frameWidth": 384,
+    "frameHeight": 540,
+    "drawWidth": 72,
+    "drawHeight": 101,
+    "startX": 140,
+    "hitboxInset": 10,
+    "slideHeightRatio": 0.55,
+    "jumpVelocity": -720,
+    "gravity": 2000,
+    "slideDuration": 0.55,
+    "visualFootPaddingRatio": 0.13,
+    "comment": "sprite sheet ตอนนี้มีแค่ท่าวิ่ง 10 เฟรม (5x2) เลยให้ jump/slide ใช้เฟรมเดียวไปก่อน พอมีท่าเพิ่มค่อยแก้ startFrame/frames ตรงนี้ได้เลย visualFootPaddingRatio คือระยะขอบโปร่งใสใต้ตัวละครในรูป ใช้เลื่อนภาพลงให้เท้าติดพื้นพอดี",
+    "animations": {
+      "run":   { "startFrame": 0, "frames": 4, "fps": 14 },
+      "jump":  { "startFrame": 2, "frames": 1,  "fps": 1  },
+      "slide": { "startFrame": 0, "frames": 1,  "fps": 1  },
+      "hit":   { "startFrame": 0, "frames": 1,  "fps": 1  }
+    }
+  },
+
+  "hp": {
+    "max": 3,
+    "invincibleAfterHitSeconds": 1.0
+  },
+
+  "speed": {
+    "base": 320,
+    "increasePerSecond": 3,
+    "maxSpeed": 720
+  },
+
+  "scoring": {
+    "coin": 10,
+    "gem": 50,
+    "per100Meters": 20,
+    "pixelsPerMeter": 40
+  },
+
+  "powerups": {
+    "magnet": { "durationSeconds": 5, "pullRadius": 170, "pullSpeed": 500 },
+    "shoe":   { "durationSeconds": 5, "speedMultiplier": 1.5 }
+  },
+
+  "obstacles": [
+    {
+      "id": "obstacle_bar",
+      "image": "asset/sprite/obstacle_bar.png",
+      "width": 70,
+      "height": 100,
+      "groundOffset": 60,
+      "comment": "ลอยสูงจากพื้น ต้องสไลด์ลอด",
+      "avoidBy": "slide",
+      "hpDamage": 1
+    },
+    {
+      "id": "obstacle_crate",
+      "image": "asset/sprite/obstacle_crate.png",
+      "width": 60,
+      "height": 60,
+      "groundOffset": 0,
+      "comment": "วางอยู่บนพื้น ต้องกระโดดข้าม",
+      "avoidBy": "jump",
+      "hpDamage": 1
+    },
+    {
+      "id": "pit",
+      "image": null,
+      "width": 130,
+      "height": 10,
+      "groundOffset": 0,
+      "comment": "หลุมบนพื้น ต้องกระโดดข้าม ตกแล้วตายทันที",
+      "avoidBy": "jump",
+      "instantDeath": true
+    }
+  ],
+
+  "collectibles": [
+    { "id": "coin",   "image": "asset/sprite/coin.png",   "width": 32, "height": 32, "type": "coin",  "score": 10 },
+    { "id": "gem",    "image": "asset/sprite/gem.png",    "width": 36, "height": 36, "type": "gem",   "score": 50 },
+    { "id": "magnet", "image": "asset/sprite/magnet.png", "width": 36, "height": 36, "type": "powerup_magnet" },
+    { "id": "shoe",   "image": "asset/sprite/shoe.png",   "width": 36, "height": 36, "type": "powerup_shoe" }
+  ],
+
+  "spawn": {
+    "minGapPx": 230,
+    "maxGapPx": 420,
+    "obstacleChance": 0.35,
+    "collectibleChance": 0.65,
+    "collectibleWeights": { "coin": 60, "gem": 15, "magnet": 12, "shoe": 13 },
+    "collectibleHeightsAboveGround": [0, 40, 90],
+    "coinRowChance": 0.45,
+    "coinRowCount": 4,
+    "coinRowSpacingPx": 50,
+    "comment": "obstacleChance + collectibleChance = 1.0 คือ spawn ทุกรอบแน่นอน, collectibleWeights ใช้ถ่วงน้ำหนักว่าจะออกของเก็บสะสมชนิดไหน (ยิ่งเลขเยอะยิ่งออกบ่อย ไม่ต้องรวมเป็น 100), coinRowChance คือโอกาสที่เหรียญจะออกมาเป็นแถวติดกันหลายเหรียญแทนที่จะออกทีละเหรียญ"
+  }
+}
