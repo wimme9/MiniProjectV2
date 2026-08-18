@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>One Minute Platformer</title>
+
+  <!-- Thai-friendly display font (full Thai vowel/tone-mark coverage) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(180deg, #000000 0%, #000000 55%, #000000 100%);
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #game-container {
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(80, 140, 180, 0.35), 0 0 0 6px #000000, 0 0 0 10px #000000;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <!-- Loads Google Fonts and lets us WAIT for them before Phaser draws any
+       text. This matters specifically for Thai: if a Text object is created
+       before the font has actually loaded, the browser measures/clips it
+       using the fallback font's metrics box, and Thai vowels/tone marks
+       (which sit above and below the consonant, outside a Latin font's box)
+       get cut off even after the real font swaps in visually. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/webfont/1.6.28/webfontloader.js"></script>
+
+  <!-- Phaser library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+
+  <!-- Tiny synth sound-effects helper (no audio files needed) -->
+  <script src="sfx.js"></script>
+
+  <!-- Scenes (order matters: game10.js references these classes) -->
+  <script src="scenes/LevelGenerator.js"></script>
+  <script src="scenes/MenuScene.js"></script>
+  <script src="scenes/GameplayScene.js"></script>
+  <script src="scenes/PauseScene.js"></script>
+  <script src="scenes/VictoryScene.js"></script>
+  <script src="scenes/GameOverScene.js"></script>
+
+  <!-- Main entry point -->
+  <script src="game10.js"></script>
+</body>
+</html>
