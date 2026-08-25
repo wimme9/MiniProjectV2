@@ -388,13 +388,25 @@ function spawnEntity() {
   const roll = Math.random();
   if (roll < s.obstacleChance) {
     const def = CONFIG.obstacles[Math.floor(Math.random() * CONFIG.obstacles.length)];
+
+    // FIX: สิ่งกีดขวางติดพื้นแบบบาง (lowToGround เช่นหลุม) ต้องมี hitbox ที่ "ทับ"
+    // กับกล่องชนของตัวละครจริง เพราะกล่องชนของตัวละคร (getPlayerHitbox) จะมีขอบล่าง
+    // สูงกว่าเส้นพื้นเล็กน้อยเสมอ (หักด้วย hitboxInset ทั้งท่าวิ่ง/สไลด์) ถ้าตั้ง top ของ
+    // หลุมไว้ที่ groundY พอดีแบบเดิม สองกล่องจะ "แตะกันพอดี" แต่ไม่ทับกัน -> aabb() ใช้ >
+    // แบบเข้ม เลยไม่นับว่าชน จึงต้องขยับขอบบนของหลุมให้สูงขึ้นมาทับซ้อนกับตัวละครเสมอ
+    const isLowToGround = !!def.lowToGround;
+    const inset = CONFIG.player.hitboxInset;
+    const overlapBuffer = inset + 2; // เผื่อชนแน่นอนทั้งท่าวิ่งและสไลด์
+    const hitY = isLowToGround ? (groundY - overlapBuffer) : groundY - def.groundOffset - def.height;
+    const hitH = isLowToGround ? (VH - hitY) : def.height;
+
     entities.push({
       kind: 'obstacle',
       def,
       x: spawnX,
-      y: groundY - def.groundOffset - def.height,
+      y: hitY,
       w: def.width,
-      h: def.height
+      h: hitH
     });
   } else {
     const typeId = pickWeighted(s.collectibleWeights);
@@ -558,7 +570,7 @@ function drawGround() {
 
 function drawEntity(e) {
   const img = images[e.def.id];
-  if (e.kind === 'obstacle' && e.def.instantDeath) {
+  if (e.kind === 'obstacle' && e.def.id === 'pit') {
     // pit: draw as dark gap in the ground
     ctx.fillStyle = '#0d0f1a';
     ctx.fillRect(e.x, CONFIG.ground.y, e.w, VH - CONFIG.ground.y);
@@ -585,14 +597,22 @@ function drawPlayer() {
     const row = Math.floor(frameIndex / p.sheetColumns);
     const sx = col * p.frameWidth;
     const sy = row * p.frameHeight;
-    let dh = player.h;
+    
+    // วาดด้วยขนาดปกติเสมอ ไม่บีบภาพสไปรต์ให้บี้
+    const dw = player.w;
+    const dh = player.h;
+    
+    // คำนวณตำแหน่ง Y ให้ขอบล่างของภาพแตะพื้นพอดี
     let dy = player.y;
     if (player.action === 'slide') {
-      dh = player.h * p.slideHeightRatio;
-      dy = player.y + (player.h - dh);
+      // ตอนสไลด์ให้ตำแหน่งอ้างอิงตรงกับกล่องชนสไลด์
+      dy = player.y + (player.h - player.h * p.slideHeightRatio);
     }
-    dy += p.visualFootPaddingRatio * dh; // เลื่อนภาพลงให้เท้าติดเส้นพื้นจริง (ชดเชยขอบโปร่งใสในสไปรต์)
-    ctx.drawImage(img, sx, sy, p.frameWidth, p.frameHeight, player.x, dy, player.w, dh);
+    
+    // ชดเชยระยะลอย (ถ้าตั้ง visualFootPaddingRatio ไว้)
+    dy += (p.visualFootPaddingRatio || 0) * dh;
+
+    ctx.drawImage(img, sx, sy, p.frameWidth, p.frameHeight, player.x, dy, dw, dh);
   } else {
     ctx.fillStyle = '#ffffff';
     let h = player.h, y = player.y;
@@ -600,7 +620,6 @@ function drawPlayer() {
     ctx.fillRect(player.x, y, player.w, h);
   }
 }
-
 /* ============================================================
    GO
    ============================================================ */
