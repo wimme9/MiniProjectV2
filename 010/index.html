@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>เก็บเหรียญหนีระเบิด (Coin Rush: Bomb Escape)</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1b1f3b;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  }
+  #game-container {
+    box-shadow: 0 0 40px rgba(0,0,0,0.6);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+</head>
+<body>
+<div id="game-container"></div>
+<script>
+
+const GAME_W = 480;
+const GAME_H = 720;
+const GAME_TIME = 60; // วินาที
+const PLAYER_SPEED = 380;
+const HP_MAX = 3;
+
+// ============================================================
+//  AudioManager -- เสียงคลิก / เสียงระเบิด / เพลงพื้นหลัง
+//  (สร้างด้วย Web Audio API ล้วน ๆ ไม่ต้องพึ่งไฟล์เสียงภายนอก
+//   จึงไม่มีปัญหาเรื่องไฟล์หาย/โหลดไม่ขึ้น)
+// ============================================================
+const AudioManager = {
+  ctx: null,
+  musicGain: null,
+  sfxGain: null,
+  muted: false,
+  musicTimer: null,
+  musicStep: 0,
+
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    this.musicGain = this.ctx.createGain();
+    this.musicGain.gain.value = 0.12;
+    this.musicGain.connect(this.ctx.destination);
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.35;
+    this.sfxGain.connect(this.ctx.destination);
+  },
+
+  resume() {
+    this.init();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+
+  // เสียงคลิกปุ่ม
+  playClick() {
+    this.resume();
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(440, t + 0.08);
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(gain).connect(this.sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  },
+
+  // เสียงระเบิดตอนชนบอมบ์ (noise burst + thud เบส)
+  playExplosion() {
+    this.resume();
+    const t = this.ctx.currentTime;
+
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.4);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1200, t);
+    filter.frequency.exponentialRampToValueAtTime(80, t + 0.35);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.7, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    noise.connect(filter).connect(nGain).connect(this.sfxGain);
+    noise.start(t);
+    noise.stop(t + 0.4);
+
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.3);
+    oGain.gain.setValueAtTime(0.6, t);
+    oGain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc.connect(oGain).connect(this.sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.3);
+  },
+
+  // เพลงพื้นหลังแบบ loop เล็ก ๆ (เบส + ทำนอง สลับกัน)
+  startMusic() {
+    this.resume();
+    if (this.musicTimer) return;
+    const notesBass = [98, 98, 110, 98, 87, 87, 98, 82];
+    const notesLead = [392, 440, 466, 440, 392, 349, 392, 440];
+    const stepTime = 0.28;
+
+    const scheduleStep = () => {
+      const t = this.ctx.currentTime + 0.02;
+      const i = this.musicStep % notesBass.length;
+
+      const bOsc = this.ctx.createOscillator();
+      const bGain = this.ctx.createGain();
+      bOsc.type = 'triangle';
+      bOsc.frequency.setValueAtTime(notesBass[i], t);
+      bGain.gain.setValueAtTime(0, t);
+      bGain.gain.linearRampToValueAtTime(0.5, t + 0.02);
+      bGain.gain.exponentialRampToValueAtTime(0.001, t + stepTime * 0.9);
+      bOsc.connect(bGain).connect(this.musicGain);
+      bOsc.start(t);
+      bOsc.stop(t + stepTime);
+
+      if (i % 2 === 0) {
+        const lOsc = this.ctx.createOscillator();
+        const lGain = this.ctx.createGain();
+        lOsc.type = 'square';
+        lOsc.frequency.setValueAtTime(notesLead[i], t);
+        lGain.gain.setValueAtTime(0, t);
+        lGain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+        lGain.gain.exponentialRampToValueAtTime(0.001, t + stepTime * 0.8);
+        lOsc.connect(lGain).connect(this.musicGain);
+        lOsc.start(t);
+        lOsc.stop(t + stepTime);
+      }
+      this.musicStep++;
+    };
+
+    scheduleStep();
+    this.musicTimer = setInterval(scheduleStep, stepTime * 1000);
+  },
+
+  stopMusic() {
+    if (this.musicTimer) {
+      clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+  },
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.musicGain) this.musicGain.gain.value = this.muted ? 0 : 0.12;
+    if (this.sfxGain) this.sfxGain.gain.value = this.muted ? 0 : 0.35;
+    return this.muted;
+  }
+};
+
+// ปุ่มลำโพงเปิด/ปิดเสียง ใช้ซ้ำได้หลายฉาก
+function addMuteButton(scene, x, y) {
+  const icon = scene.add.text(x, y, AudioManager.muted ? '🔇' : '🔊', {
+    fontSize: '22px'
+  }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+
+  icon.on('pointerdown', () => {
+    const muted = AudioManager.toggleMute();
+    icon.setText(muted ? '🔇' : '🔊');
+  });
+  return icon;
+}
+
+// ---------- Helper: วาดกราฟิกด้วยโค้ด (ไม่ใช้รูปภาพภายนอก) ----------
+function createTextures(scene) {
+  // เหรียญ (Coin)
+  let g = scene.add.graphics();
+  g.fillStyle(0xffd447, 1);
+  g.fillCircle(16, 16, 16);
+  g.lineStyle(3, 0xe8a900, 1);
+  g.strokeCircle(16, 16, 16);
+  g.fillStyle(0xe8a900, 1);
+  g.fillCircle(16, 16, 6);
+  g.generateTexture('coin', 32, 32);
+  g.destroy();
+
+  // ระเบิด (Bomb)
+  g = scene.add.graphics();
+  g.fillStyle(0x2b2b2b, 1);
+  g.fillCircle(18, 20, 16);
+  g.fillStyle(0x555555, 1);
+  g.fillCircle(12, 14, 5);
+  g.lineStyle(4, 0x8a5a2b, 1);
+  g.beginPath();
+  g.moveTo(18, 4);
+  g.lineTo(24, -4);
+  g.strokePath();
+  g.fillStyle(0xff6b3d, 1);
+  g.fillCircle(24, -5, 4);
+  g.generateTexture('bomb', 36, 36);
+  g.destroy();
+
+  // พื้นหลัง -- ปรับใหม่ให้มองเห็นชัดขึ้น: ไล่เฉดสี + ดาวคมชัดขึ้น + ขอบมืดด้านบน-ล่างช่วยให้ตัวหนังสืออ่านง่าย
+  if (!scene.textures.exists('bg')) {
+    const bgCanvasTex = scene.textures.createCanvas('bg', GAME_W, GAME_H);
+    const ctx = bgCanvasTex.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+    grad.addColorStop(0, '#11142c');
+    grad.addColorStop(0.45, '#1c2354');
+    grad.addColorStop(1, '#2a1f4d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+    // ดาว/จุดแสง ให้ความคมชัดหลากหลายขนาด
+    for (let i = 0; i < 110; i++) {
+      const x = Math.random() * GAME_W;
+      const y = Math.random() * GAME_H;
+      const r = Math.random() * 1.6 + 0.5;
+      const alpha = Math.random() * 0.5 + 0.35;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // เพิ่มดาวเรืองแสงจาง ๆ ไม่กี่ดวงให้มีมิติ
+    for (let i = 0; i < 14; i++) {
+      const x = Math.random() * GAME_W;
+      const y = Math.random() * GAME_H;
+      const r = Math.random() * 2 + 2;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+      glow.addColorStop(0, 'rgba(140,180,255,0.35)');
+      glow.addColorStop(1, 'rgba(140,180,255,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ขอบมืดบาง ๆ ด้านบน/ล่าง เพิ่มคอนทราสต์ให้ UI อ่านง่ายขึ้น
+    const topShade = ctx.createLinearGradient(0, 0, 0, 90);
+    topShade.addColorStop(0, 'rgba(0,0,0,0.35)');
+    topShade.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = topShade;
+    ctx.fillRect(0, 0, GAME_W, 90);
+
+    bgCanvasTex.refresh();
+  }
+}
+
+// ---------- Scene 1: Title / Menu ----------
+class TitleScene extends Phaser.Scene {
+  constructor() { super('TitleScene'); }
+
+  preload() {
+    // สไปรท์ตัวเป็ด: แถว1 (index0) = ท่ายืนนิ่ง (idle) 2 เฟรม, แถว2 (index1) = ท่าเดิน (walk) 6 เฟรม
+    this.load.spritesheet('ducky', 'images/spr-ducky.png', { frameWidth: 32, frameHeight: 32 });
+    this.load.image('heart', 'images/hp.png');
+    this.load.audio('pop', 'images/pop.mp3');
+  }
+
+  create() {
+    createTextures(this);
+
+    if (!this.anims.exists('duck-idle')) {
+      this.anims.create({
+        key: 'duck-idle',
+        frames: this.anims.generateFrameNumbers('ducky', { start: 0, end: 1 }),
+        frameRate: 3,
+        repeat: -1
+      });
+    }
+    if (!this.anims.exists('duck-walk')) {
+      this.anims.create({
+        key: 'duck-walk',
+        frames: this.anims.generateFrameNumbers('ducky', { start: 6, end: 11 }),
+        frameRate: 12,
+        repeat: -1
+      });
+    }
+
+    this.add.image(GAME_W/2, GAME_H/2, 'bg');
+
+    // เริ่มเพลงพื้นหลังทันทีที่ผู้เล่นมีปฏิสัมพันธ์ครั้งแรก (ตามข้อจำกัดของเบราว์เซอร์)
+    this.input.once('pointerdown', () => AudioManager.startMusic());
+    this.input.keyboard.once('keydown', () => AudioManager.startMusic());
+
+    addMuteButton(this, GAME_W - 16, 16);
+
+    this.add.text(GAME_W/2, 100, 'Coin Rush: Bomb Escape', {
+      fontSize: '32px', color: '#ffd447', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.add.text(GAME_W/2, 138, '-----------------------', {
+      fontSize: '18px', color: '#9fb0ff'
+    }).setOrigin(0.5);
+
+    // แถวไอคอนตกแต่ง: เหรียญ - เป็ด - ระเบิด (ขยับเป็ดขึ้นมาไว้ตรงนี้ ไม่บังข้อความด้านล่างแล้ว)
+    this.add.image(GAME_W/2 - 110, 205, 'coin').setScale(1.3);
+    const preview = this.add.sprite(GAME_W/2, 205, 'ducky').setScale(1.7);
+    preview.play('duck-idle');
+    this.add.image(GAME_W/2 + 110, 205, 'bomb').setScale(1.3);
+
+    // แผงทึบด้านหลังข้อความวิธีเล่น ช่วยให้อ่านง่ายขึ้นบนพื้นหลังลายดาว
+    const panel = this.add.graphics();
+    panel.fillStyle(0x000000, 0.4);
+    panel.fillRoundedRect(40, 252, GAME_W - 80, 190, 14);
+
+    const howTo = [
+      '(How to Play)',
+      '• ใช้ปุ่ม ← → หรือ A / D เพื่อเคลื่อนที่',
+      '• เก็บเหรียญ = ได้ +10 คะแนน',
+      '• ชนระเบิด = เสีย HP 1 ดวง',
+      '• อยู่รอดให้ครบ 60 วินาทีเพื่อชนะ!'
+    ];
+    this.add.text(GAME_W/2, 347, howTo, {
+      fontSize: '16px', color: '#ffffff', align: 'center', lineSpacing: 8
+    }).setOrigin(0.5);
+
+    const startBtn = this.add.text(GAME_W/2, 570, 'เริ่มเกม (START)', {
+      fontSize: '26px', color: '#1b1f3b', backgroundColor: '#4fd3ff',
+      padding: { x: 24, y: 12 }, fontStyle: 'bold'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    startBtn.on('pointerover', () => startBtn.setStyle({ backgroundColor: '#7fe3ff' }));
+    startBtn.on('pointerout', () => startBtn.setStyle({ backgroundColor: '#4fd3ff' }));
+    startBtn.on('pointerdown', () => {
+      AudioManager.startMusic();
+      AudioManager.playClick();
+      this.scene.start('GameScene');
+    });
+
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('GameScene'));
+    this.input.keyboard.once('keydown-ENTER', () => this.scene.start('GameScene'));
+  }
+}
+
+// ---------- Scene 2: Main Gameplay ----------
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    this.add.image(GAME_W/2, GAME_H/2, 'bg');
+
+    this.score = 0;
+    this.hp = HP_MAX;
+    this.timeLeft = GAME_TIME;
+    this.gameEnded = false;
+    this.isPaused = false;
+
+    // ผู้เล่น (ตัวเป็ด)
+    this.player = this.physics.add.sprite(GAME_W/2, GAME_H - 80, 'ducky');
+    this.player.setCollideWorldBounds(true);
+    this.player.setScale(2.2);
+    this.player.body.setSize(28, 28).setOffset(2, 4);
+    this.player.play('duck-idle');
+    this.facingRight = true;
+
+    // กลุ่มเหรียญ / ระเบิด
+    this.coins = this.physics.add.group();
+    this.bombs = this.physics.add.group();
+
+    // ควบคุม
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.keyA = this.input.keyboard.addKey('A');
+    this.keyD = this.input.keyboard.addKey('D');
+
+    // ---------- UI ----------
+    const uiStyle = { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' };
+    this.scoreText = this.add.text(16, 16, 'คะแนน: 0', uiStyle);
+    this.timerText = this.add.text(GAME_W/2, 16, 'เวลา: 60', uiStyle).setOrigin(0.5, 0);
+
+    this.hpIcons = [];
+    for (let i = 0; i < HP_MAX; i++) {
+      const icon = this.add.image(GAME_W - 24 - i * 30, 26, 'heart').setScale(0.09);
+      this.hpIcons.push(icon);
+    }
+
+    // ปุ่มหยุดชั่วคราว (Stop/Pause)
+    this.pauseBtn = this.add.text(16, 50, '⏸ หยุด', {
+      fontSize: '16px', color: '#ffffff', backgroundColor: '#3d478a',
+      padding: { x: 8, y: 4 }
+    }).setInteractive({ useHandCursor: true });
+    this.pauseBtn.on('pointerdown', () => {
+      AudioManager.playClick();
+      this.togglePause();
+    });
+
+    // ปุ่มเปิด/ปิดเสียง
+    addMuteButton(this, GAME_W - 16, 56);
+
+    // ---------- Spawners ----------
+    this.coinTimer = this.time.addEvent({
+      delay: 650, loop: true, callback: this.spawnCoin, callbackScope: this
+    });
+    this.bombTimer = this.time.addEvent({
+      delay: 900, loop: true, callback: this.spawnBomb, callbackScope: this
+    });
+    this.gameTimer = this.time.addEvent({
+      delay: 1000, loop: true, callback: this.tickTime, callbackScope: this
+    });
+
+    // ---------- Collisions ----------
+    this.physics.add.overlap(this.player, this.coins, this.collectCoin, null, this);
+    this.physics.add.overlap(this.player, this.bombs, this.hitBomb, null, this);
+  }
+
+  spawnCoin() {
+    if (this.gameEnded) return;
+    const x = Phaser.Math.Between(30, GAME_W - 30);
+    const coin = this.coins.create(x, -20, 'coin');
+    coin.setVelocityY(Phaser.Math.Between(160, 240));
+  }
+
+  spawnBomb() {
+    if (this.gameEnded) return;
+    const x = Phaser.Math.Between(30, GAME_W - 30);
+    const bomb = this.bombs.create(x, -20, 'bomb');
+    bomb.setVelocityY(Phaser.Math.Between(200, 320));
+  }
+
+  collectCoin(player, coin) {
+    coin.destroy();
+    this.sound.play('pop', { volume: 0.6 });
+    this.score += 10;
+    this.scoreText.setText('คะแนน: ' + this.score);
+  }
+
+  hitBomb(player, bomb) {
+    bomb.destroy();
+    AudioManager.playExplosion();
+    this.hp -= 1;
+    if (this.hpIcons[this.hp]) {
+      this.hpIcons[this.hp].setTint(0x555555).setAlpha(0.5);
+    }
+    this.cameras.main.shake(150, 0.01);
+
+    if (this.hp <= 0) {
+      this.endGame(false);
+    }
+  }
+
+  tickTime() {
+    if (this.gameEnded) return;
+    this.timeLeft -= 1;
+    this.timerText.setText('เวลา: ' + this.timeLeft);
+    if (this.timeLeft <= 0) {
+      this.endGame(true);
+    }
+  }
+
+  togglePause() {
+    if (this.gameEnded) return;
+    this.isPaused = !this.isPaused;
+
+    if (this.isPaused) {
+      this.physics.pause();
+      this.coinTimer.paused = true;
+      this.bombTimer.paused = true;
+      this.gameTimer.paused = true;
+      this.pauseBtn.setText('▶ เล่นต่อ');
+
+      this.pauseOverlay = this.add.rectangle(GAME_W/2, GAME_H/2, GAME_W, GAME_H, 0x000000, 0.55);
+      this.pauseTitle = this.add.text(GAME_W/2, GAME_H/2 - 40, 'หยุดชั่วคราว', {
+        fontSize: '30px', color: '#ffd447', fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.pauseHint = this.add.text(GAME_W/2, GAME_H/2 + 10, 'กดปุ่ม "เล่นต่อ" มุมซ้ายบนเพื่อไปต่อ', {
+        fontSize: '16px', color: '#ffffff'
+      }).setOrigin(0.5);
+    } else {
+      this.physics.resume();
+      this.coinTimer.paused = false;
+      this.bombTimer.paused = false;
+      this.gameTimer.paused = false;
+      this.pauseBtn.setText('⏸ หยุด');
+
+      if (this.pauseOverlay) this.pauseOverlay.destroy();
+      if (this.pauseTitle) this.pauseTitle.destroy();
+      if (this.pauseHint) this.pauseHint.destroy();
+    }
+  }
+
+  endGame(won) {
+    if (this.gameEnded) return;
+    this.gameEnded = true;
+    this.coinTimer.remove();
+    this.bombTimer.remove();
+    this.gameTimer.remove();
+    this.physics.pause();
+
+    this.time.delayedCall(400, () => {
+      this.scene.start('GameOverScene', { score: this.score, won: won });
+    });
+  }
+
+  update() {
+    if (this.gameEnded || this.isPaused) return;
+
+    const left = this.cursors.left.isDown || this.keyA.isDown;
+    const right = this.cursors.right.isDown || this.keyD.isDown;
+
+    if (left) {
+      this.player.setVelocityX(-PLAYER_SPEED);
+      this.player.setFlipX(true);
+      if (this.player.anims.currentAnim?.key !== 'duck-walk') this.player.play('duck-walk');
+    } else if (right) {
+      this.player.setVelocityX(PLAYER_SPEED);
+      this.player.setFlipX(false);
+      if (this.player.anims.currentAnim?.key !== 'duck-walk') this.player.play('duck-walk');
+    } else {
+      this.player.setVelocityX(0);
+      if (this.player.anims.currentAnim?.key !== 'duck-idle') this.player.play('duck-idle');
+    }
+
+    // ทำลายวัตถุที่หลุดจอด้านล่าง
+    this.coins.children.each((c) => { if (c.y > GAME_H + 20) c.destroy(); });
+    this.bombs.children.each((b) => { if (b.y > GAME_H + 20) b.destroy(); });
+  }
+}
+
+// ---------- Scene 3: Game Over ----------
+class GameOverScene extends Phaser.Scene {
+  constructor() { super('GameOverScene'); }
+
+  init(data) {
+    this.finalScore = data.score || 0;
+    this.won = !!data.won;
+  }
+
+  create() {
+    this.add.image(GAME_W/2, GAME_H/2, 'bg');
+
+    addMuteButton(this, GAME_W - 16, 16);
+
+    this.add.text(GAME_W/2, 200, this.won ? 'ผ่าน!' : 'จบเกม (Game Over)', {
+      fontSize: '32px', color: this.won ? '#4fd3ff' : '#ff5566', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_W/2, 250, this.won ? 'คุณรอดจนหมดเวลา!' : 'You die', {
+      fontSize: '16px', color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.add.image(GAME_W/2, 330, this.won ? 'coin' : 'bomb').setScale(2.5);
+
+    this.add.text(GAME_W/2, 420, 'คะแนน: ' + this.finalScore, {
+      fontSize: '24px', color: '#ffd447', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    const replayBtn = this.add.text(GAME_W/2, 540, 'เล่นใหม่ (REPLAY)', {
+      fontSize: '24px', color: '#1b1f3b', backgroundColor: '#4fd3ff',
+      padding: { x: 20, y: 10 }, fontStyle: 'bold'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    replayBtn.on('pointerover', () => replayBtn.setStyle({ backgroundColor: '#7fe3ff' }));
+    replayBtn.on('pointerout', () => replayBtn.setStyle({ backgroundColor: '#4fd3ff' }));
+    replayBtn.on('pointerdown', () => {
+      AudioManager.playClick();
+      this.scene.start('GameScene');
+    });
+
+    const menuBtn = this.add.text(GAME_W/2, 610, 'กลับเมนู (MENU)', {
+      fontSize: '18px', color: '#ffffff', backgroundColor: '#3d478a',
+      padding: { x: 16, y: 8 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    menuBtn.on('pointerdown', () => {
+      AudioManager.playClick();
+      this.scene.start('TitleScene');
+    });
+
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('GameScene'));
+  }
+}
+
+// ---------- Config ----------
+const config = {
+  type: Phaser.AUTO,
+  width: GAME_W,
+  height: GAME_H,
+  parent: 'game-container',
+  backgroundColor: '#1b1f3b',
+  physics: {
+    default: 'arcade',
+    arcade: { gravity: { y: 0 }, debug: false }
+  },
+  scene: [TitleScene, GameScene, GameOverScene]
+};
+
+new Phaser.Game(config);
+</script>
+</body>
+</html>
