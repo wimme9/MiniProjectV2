@@ -35,19 +35,19 @@
     "frameWidth": 384,
     "frameHeight": 540,
     "drawWidth": 72,
-    "drawHeight": 101,
+    "drawHeight": 96,
     "startX": 140,
     "hitboxInset": 10,
     "slideHeightRatio": 0.55,
     "jumpVelocity": -720,
     "gravity": 2000,
     "slideDuration": 0.55,
-    "visualFootPaddingRatio": 0.13,
+    "visualFootPaddingRatio": 0.11,
     "comment": "sprite sheet ตอนนี้มีแค่ท่าวิ่ง 10 เฟรม (5x2) เลยให้ jump/slide ใช้เฟรมเดียวไปก่อน พอมีท่าเพิ่มค่อยแก้ startFrame/frames ตรงนี้ได้เลย visualFootPaddingRatio คือระยะขอบโปร่งใสใต้ตัวละครในรูป ใช้เลื่อนภาพลงให้เท้าติดพื้นพอดี",
     "animations": {
       "run":   { "startFrame": 0, "frames": 4, "fps": 14 },
       "jump":  { "startFrame": 2, "frames": 1,  "fps": 1  },
-      "slide": { "startFrame": 0, "frames": 1,  "fps": 1  },
+      "slide": { "startFrame": 5, "frames": 5,  "fps": 8  },
       "hit":   { "startFrame": 0, "frames": 1,  "fps": 1  }
     }
   },
@@ -102,9 +102,10 @@
       "width": 130,
       "height": 10,
       "groundOffset": 0,
-      "comment": "หลุมบนพื้น ต้องกระโดดข้าม ตกแล้วตายทันที",
+      "comment": "หลุมบนพื้น ต้องกระโดดข้าม ตกแล้วเสียหัวใจ 1 ดวงเหมือนสิ่งกีดขวางอื่น",
       "avoidBy": "jump",
-      "instantDeath": true
+      "lowToGround": true,
+      "hpDamage": 1
     }
   ],
 
